@@ -19,7 +19,7 @@ def initial_data_load_handler():
         # Ensure the directory exists
         os.makedirs(os.path.dirname(data_file_path), exist_ok=True)
         
-        with open(data_file_path, "w") as f:
+        with open(os.path.abspath(data_file_path), "w") as f:
             f.write("{}") 
     try:
         data = load_json_from_file(data_file_path)

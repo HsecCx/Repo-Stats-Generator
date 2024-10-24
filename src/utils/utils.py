@@ -76,7 +76,7 @@ def move_folder(src: str, dest: str) -> None:
 def create_set_from_txt(file_path: str) -> list:
     """Creates a sorted set of unique entries from a text file."""
     try:
-        with open(file_path, "r+", encoding="utf-8") as f:
+        with open(os.path.abspath(file_path), "r+", encoding="utf-8") as f:
             text_list = [line.strip() for line in f.readlines()]
         
         if not text_list:

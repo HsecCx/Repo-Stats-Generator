@@ -91,15 +91,22 @@ class GithubAPIHandler:
     def get_latest_non_bot_commit_date(self,commits):
         non_bot_commit_date = None
         for commit in commits:
-            author_login = commit.get('author', {}).get('login', '')
-            committer_login = commit.get('committer', {}).get('login', '')
+            try:
+                author_name = commit.get('commit', {}).get('author', '').get('name', '')
+                committer_name = commit.get('commit', {}).get('committer', '').get('name', '')
+            except Exception as e:
+                logging.error(f"Error getting commit data: {e}")
+                #print(commit)
             # Exclude commits by bots (login containing 'bot')
-            if not re.search(r'\[bot\]', author_login, re.IGNORECASE) and not re.search(r'\[bot\]', committer_login, re.IGNORECASE):
+            if not re.search(r'\[bot\]', author_name, re.IGNORECASE) and not re.search(r'\[bot\]', committer_name, re.IGNORECASE):
                 author_date = commit['commit']['author']['date']
                 if not non_bot_commit_date or author_date > non_bot_commit_date:
                     non_bot_commit_date = author_date
-
-        return non_bot_commit_date.split('T')[0]
+            else:
+                # print(author_name, committer_name)
+                pass
+            
+        return non_bot_commit_date.split("T")[0]
 
     
     def get_github_repo_languages_stats(self, owner: Optional[str] = None) -> dict:
