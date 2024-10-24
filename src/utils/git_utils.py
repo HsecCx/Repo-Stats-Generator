@@ -3,8 +3,54 @@ import os
 import logging
 from dotenv import load_dotenv
 from typing import Any, Optional
+import subprocess
+import re
 
 load_dotenv()
+
+
+logging.basicConfig(level=logging.INFO)
+
+
+class GitCommands:
+    STATUS = "status"
+    FULL_PUSH = "full_push"
+    CLONE = "clone"
+
+
+class GithubActionManager:
+    
+    def _git_command_result_handler(self, command: str, result: subprocess.CompletedProcess) -> Any:
+        if command == GitCommands.STATUS:
+            return "nothing to commit" not in str(result.stdout)
+        if command == GitCommands.FULL_PUSH:
+            return result
+        return result
+
+    def git_run_commands(self, command: str, working_directory: str, git_url: Optional[str] = None) -> list:
+        git_commands = []
+        results = []
+        
+        if command == GitCommands.STATUS:
+            git_commands.append(['git', 'status'])
+        elif command == GitCommands.FULL_PUSH:
+            git_commands.extend([
+                ['git', 'add', '--all'],
+                ['git', 'commit', '-m', "Updates"],
+                ['git', "push", "-u", "origin"]
+            ])
+        elif command == GitCommands.CLONE and git_url:
+            git_commands.append(['git', 'clone', git_url])
+        
+        for git_command in git_commands:
+            try:
+                result = subprocess.run(git_command, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=working_directory)
+                results.append(self._git_command_result_handler(command, result))
+            except subprocess.CalledProcessError as e:
+                results.append(f"Error running Git command: {e}\nGIT {command} error output:\n{e.stderr}")
+        
+        return results
+
 
 class GithubAPIHandler:
     
@@ -12,6 +58,7 @@ class GithubAPIHandler:
         self.headers = headers
         self.repo_name = repo_name
         self.org_name = self.set_org_name(org)
+        self.base_url_endpoint = "https://api.github.com"
 
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
         logging.info(f"Making a request to: {url}")
@@ -23,26 +70,42 @@ class GithubAPIHandler:
 
     def remote_github_repo_exists(self) -> dict:
         self._ensure_req_info()
-        url = f"https://api.github.com/repos/{self.org}/{self.repo_name}"
+        url = f"{self.base_url_endpoint}/repos/{self.org}/{self.repo_name}"
         response = self._request('GET', url)
         exists = response.ok
         return exists
 
     def get_github_org_repo_list(self) -> list:
-        url = f"https://api.github.com/orgs/{self.org}/repos"
+        url = f"{self.base_url_endpoint}/orgs/{self.org}/repos"
         response = self._request('GET', url)
         return [repo['clone_url'] for repo in response.json()]
     
-    def get_last_commit_date(self, url: str = None) -> str:
+    def get_last_commit_date(self, owner: str = None) -> str:
         self._ensure_req_info()
+        url = f"{self.base_url_endpoint}/repos/{owner}/{self.repo_name}/commits"
         response = self._request('GET', url)
-        last_commit = response.json()[0]['commit']['author']['date']
-        return last_commit
+        last_commit_data = response.json()
+        last_commit_date = self.get_latest_non_bot_commit_date(last_commit_data)
+        return last_commit_date
 
+    def get_latest_non_bot_commit_date(self,commits):
+        non_bot_commit_date = None
+        for commit in commits:
+            author_login = commit.get('author', {}).get('login', '')
+            committer_login = commit.get('committer', {}).get('login', '')
+            # Exclude commits by bots (login containing 'bot')
+            if not re.search(r'\[bot\]', author_login, re.IGNORECASE) and not re.search(r'\[bot\]', committer_login, re.IGNORECASE):
+                author_date = commit['commit']['author']['date']
+                if not non_bot_commit_date or author_date > non_bot_commit_date:
+                    non_bot_commit_date = author_date
+
+        return non_bot_commit_date.split('T')[0]
+
+    
     def get_github_repo_languages_stats(self, owner: Optional[str] = None) -> dict:
         self._ensure_req_info()
         owner = owner or self.org
-        url = f"https://api.github.com/repos/{owner}/{self.repo_name}/languages"
+        url = f"{self.base_url_endpoint}/repos/{owner}/{self.repo_name}/languages"
         response = self._request('GET', url)
         return self.__set_languague_percentages(response.json())
     
@@ -69,3 +132,4 @@ class GithubAPIHandler:
     def _ensure_req_info(self) -> None:
         if not self.repo_name:
             self.set_repo_name()
+

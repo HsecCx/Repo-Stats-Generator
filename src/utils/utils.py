@@ -6,7 +6,7 @@ from pathlib import Path
 
 load_dotenv()
 
-# Setup logging instead of using print statements
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Regex patterns stored as constants for reusability

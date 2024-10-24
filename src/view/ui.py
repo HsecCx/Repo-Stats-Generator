@@ -1,15 +1,15 @@
-import sys
 import os
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QTableWidget, QTableWidgetItem, QComboBox, QGroupBox, QPushButton, QProgressBar
+    QTableWidget, QTableWidgetItem, QComboBox, QGroupBox, QPushButton, QProgressBar,
+    QAbstractItemView
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon, QPixmap
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from dotenv import load_dotenv
-
+from utils.git_utils import GithubActionManager, GitCommands
             
 class MainWindow(QWidget):
     def __init__(self, data):
@@ -34,93 +34,101 @@ class MainWindow(QWidget):
         self.initUI()
 
     def initUI(self):
-        self.setWindowTitle('Repository Language Breakdown')
-        self.setGeometry(100, 100, 1000, 700)
-        self.setWindowIcon(QIcon('app_icon.png'))  # Ensure 'app_icon.png' exists
+            self.setWindowTitle('Repository Language Breakdown')
+            self.setGeometry(100, 100, 1000, 700)
+            self.setWindowIcon(QIcon('app_icon.png'))  # Ensure 'app_icon.png' exists
 
-        self.apply_stylesheet()
+            self.apply_stylesheet()
 
-        # Main layout
-        main_layout = QVBoxLayout()
+            # Main layout
+            main_layout = QVBoxLayout()
 
-        # Controls layout
-        controls_layout = QHBoxLayout()
+            # Controls layout
+            controls_layout = QHBoxLayout()
 
-        # Language filter combo box
-        self.language_filter_combo = QComboBox()
-        self.language_filter_combo.addItem('Filter by Language')
-        self.populate_language_combo()
-        self.language_filter_combo.currentIndexChanged.connect(self.populate_table)
-        self.language_filter_combo.setToolTip('Filter repositories to display only those that use the selected language.')
+            # Language filter combo box
+            self.language_filter_combo = QComboBox()
+            self.language_filter_combo.addItem('Filter by Language')
+            self.populate_language_combo()
+            self.language_filter_combo.currentIndexChanged.connect(self.populate_table)
+            self.language_filter_combo.setToolTip('Filter repositories to display only those that use the selected language.')
 
-        controls_layout.addWidget(QLabel('Filter by Language:'))
-        controls_layout.addWidget(self.language_filter_combo)
+            controls_layout.addWidget(QLabel('Filter by Language:'))
+            controls_layout.addWidget(self.language_filter_combo)
 
-        # Language sort combo box
-        self.language_combo = QComboBox()
-        self.language_combo.addItem('Select Language to Sort By')
-        self.populate_language_sort_combo()
-        self.language_combo.currentIndexChanged.connect(self.sort_table)
-        self.language_combo.setToolTip('Select a language to sort repositories by their usage percentage.')
+            # Language sort combo box
+            self.language_combo = QComboBox()
+            self.language_combo.addItem('Select Language to Sort By')
+            self.populate_language_sort_combo()
+            self.language_combo.currentIndexChanged.connect(self.sort_table)
+            self.language_combo.setToolTip('Select a language to sort repositories by their usage percentage.')
 
-        controls_layout.addWidget(QLabel('Sort by Language:'))
-        controls_layout.addWidget(self.language_combo)
+            controls_layout.addWidget(QLabel('Sort by Language:'))
+            controls_layout.addWidget(self.language_combo)
 
-        # Add the "Run" button to generate/refresh data
-        self.run_button = QPushButton('Run Data Generation')
-        self.run_button.clicked.connect(self.run_generate_data)
-        controls_layout.addWidget(self.run_button)
+            # Add the "Run" button to generate/refresh data
+            self.run_button = QPushButton('Run Data Generation')
+            self.run_button.clicked.connect(self.run_generate_data)
+            controls_layout.addWidget(self.run_button)
 
-        main_layout.addLayout(controls_layout)
+            # Add the "Download" button
+            self.download_button = QPushButton('Download Selected Repos and count LOC')
+            self.download_button.setEnabled(False)  # Initially disabled until selection
+            self.download_button.clicked.connect(self.download_selected_repos)
+            controls_layout.addWidget(self.download_button)
 
-        # Progress Bar at the bottom
-        self.progress_bar = QProgressBar(self)
-        self.progress_bar.setAlignment(Qt.AlignCenter)
-        self.progress_bar.setValue(0)
-        main_layout.addWidget(self.progress_bar)
+            main_layout.addLayout(controls_layout)
 
-        # Split the main layout into two parts: left and right
-        content_layout = QHBoxLayout()
-        main_layout.addLayout(content_layout)
+            # Progress Bar at the bottom
+            self.progress_bar = QProgressBar(self)
+            self.progress_bar.setAlignment(Qt.AlignCenter)
+            self.progress_bar.setValue(0)
+            main_layout.addWidget(self.progress_bar)
 
-        # Left side: Table
-        self.table = QTableWidget()
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(['Repository', 'Languages', 'Total Languages'])
-        self.table.cellClicked.connect(self.display_language_breakdown)
-        self.table.setToolTip('Click on a repository to view its language breakdown.')
-        self.table.setAlternatingRowColors(True)
-        content_layout.addWidget(self.table)
+            # Split the main layout into two parts: left and right
+            content_layout = QHBoxLayout()
+            main_layout.addLayout(content_layout)
 
-        # Right side: Details and Plot
-        right_layout = QVBoxLayout()
-        content_layout.addLayout(right_layout)
+            # Left side: Table with multi-selection enabled
+            self.table = QTableWidget()
+            self.table.setColumnCount(3)
+            self.table.setHorizontalHeaderLabels(['Repository', 'Languages', 'Total Languages'])
+            self.table.setSelectionMode(QAbstractItemView.MultiSelection)  # Enable multi-selection
+            self.table.selectionModel().selectionChanged.connect(self.handle_repo_selection)
+            self.table.cellClicked.connect(self.display_language_breakdown)
+            self.table.setToolTip('Click on a repository to view its language breakdown.')
+            self.table.setAlternatingRowColors(True)
+            content_layout.addWidget(self.table)
 
-        # Repository details
-        self.details_group = QGroupBox('Repository Details')
-        details_layout = QVBoxLayout()
-        self.repo_icon_label = QLabel()
-        self.repo_details_label = QLabel("Select a repository to see details.")
-        self.repo_details_label.setWordWrap(True)
-        self.repo_details_label.setOpenExternalLinks(True)
-        details_layout.addWidget(self.repo_icon_label)
-        details_layout.addWidget(self.repo_details_label)
-        self.details_group.setLayout(details_layout)
-        right_layout.addWidget(self.details_group)
+            # Right side: Details and Plot
+            right_layout = QVBoxLayout()
+            content_layout.addLayout(right_layout)
 
-        # Matplotlib canvas for plotting
-        self.figure = plt.figure(figsize=(5, 4))
-        self.canvas = FigureCanvas(self.figure)
-        right_layout.addWidget(self.canvas)
+            # Repository details
+            self.details_group = QGroupBox('Repository Details')
+            details_layout = QVBoxLayout()
+            self.repo_icon_label = QLabel()
+            self.repo_details_label = QLabel("Select a repository to see details.")
+            self.repo_details_label.setWordWrap(True)
+            self.repo_details_label.setOpenExternalLinks(True)
+            details_layout.addWidget(self.repo_icon_label)
+            details_layout.addWidget(self.repo_details_label)
+            self.details_group.setLayout(details_layout)
+            right_layout.addWidget(self.details_group)
 
-        # Status bar
-        self.status_label = QLabel('')
-        main_layout.addWidget(self.status_label)
+            # Matplotlib canvas for plotting
+            self.figure = plt.figure(figsize=(5, 4))
+            self.canvas = FigureCanvas(self.figure)
+            right_layout.addWidget(self.canvas)
 
-        self.setLayout(main_layout)
+            # Status bar
+            self.status_label = QLabel('')
+            main_layout.addWidget(self.status_label)
 
-        # Populate the table with repository data
-        self.populate_table()
+            self.setLayout(main_layout)
+
+            # Populate the table with repository data
+            self.populate_table()
         
     def run_generate_data(self):
         """
@@ -275,6 +283,7 @@ class MainWindow(QWidget):
         <h3>{repo_name}</h3>
         <p><b>Public SCM:</b> {repo_data['public_scm']}</p>
         <p><b>Public URL:</b> <a href="{repo_data['public_url']}">{repo_data['public_url']}</a></p>
+        <p><b>Last Commit Date:</b> {repo_data['last_commit_date']}</p>
         """
 
         # if repo_data['internal_urls']:
@@ -358,3 +367,42 @@ class MainWindow(QWidget):
             )
 
         self.canvas.draw()
+
+
+    def handle_repo_selection(self):
+            """Handle multi-selection of repositories."""
+            selected_items = self.table.selectedItems()
+            selected_repos = set()
+            self.selected_repo_urls = []
+
+            # Get the selected repositories based on the rows selected
+            for item in selected_items:
+                row = item.row()
+                repo_name_item = self.table.item(row, 0)  # Get the repository name from the first column
+                if repo_name_item:
+                    repo_name = repo_name_item.text()
+                    if repo_name not in selected_repos:
+                        repo_data = self.data.get(repo_name)
+                        if repo_data:
+                            self.selected_repo_urls.append(repo_data['public_git_url'])  # Store the Git URL
+                            selected_repos.add(repo_name) 
+
+            if self.selected_repo_urls:
+                self.download_button.setEnabled(True)  
+                self.status_label.setText(f"{len(self.selected_repo_urls)} repositories selected.")
+            else:
+                self.download_button.setEnabled(False)  
+     
+    def download_selected_repos(self):
+        """Download the selected repositories using git_repo_download."""
+        if self.selected_repo_urls:
+            for repo_url in self.selected_repo_urls:
+                self.git_repo_download(repo_url)
+        else:
+            self.status_label.setText("No repositories selected for download.")
+
+    def git_repo_download(self, repo_url):
+        """Download the repository using git clone."""
+        git_actions = GithubActionManager()
+        results = git_actions.git_run_commands(GitCommands.CLONE, working_directory=os.environ.get("GIT_CLONE_FOLDER_PATH") ,git_url=repo_url)
+        a=1

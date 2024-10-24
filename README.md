@@ -22,11 +22,14 @@ This script will generate output for the repos in the following json format.  Th
 Installing the requirements.txt file for your environment
 `pip install -r /path/to/requirements.txt`
 
-Create a .env folder in the root with the formatting
+Having git installed.
+
+Create a .env folder in the root with the variables:
 ```
 GIT_API_KEY=<api_key>
 DATA_SAVE_PATH=<absolute path where you want to save your data>
 GIT_REPOS_LIST_PATH=<absolute path to where your list of repo urls is>
+GIT_CLONE_FOLDER_PATH=<aboslute path of where to clone the git repos to>
 ```
 Create a txt file with the list of urls you want. Seperate each one with a newline/return.
 

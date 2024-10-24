@@ -50,8 +50,7 @@ class RepositoryFetcher:
 
             langs = git_api_handler.get_github_repo_languages_stats(owner=owner)
             public_url = url
-            #last_commit = git_api_handler.get_last_commit_date(url.replace(".git", "/commits"))
-            
+            last_commit = git_api_handler.get_last_commit_date(owner=owner)
             repo_holder = Repo(
                 public_git_url=url,
                 name=repo_name,
@@ -59,6 +58,7 @@ class RepositoryFetcher:
                 public_scm=get_scm_from_url(url),
                 public_url=public_url.replace(".git", "")
             )
+            repo_holder.last_commit_date = last_commit or None
             
             logging.info(f"Successfully fetched URL data for {repo_name}")
         except Exception as e:
