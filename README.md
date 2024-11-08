@@ -15,6 +15,7 @@ This script will generate output for the repos in the following json format.  Th
 	},
 	"public_scm": "github",
 	"public_url": "<public_url>"
+	"last_commit_date": "<date>"
 }
 ```
 ## Prerequisites
